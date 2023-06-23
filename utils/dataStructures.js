@@ -26,7 +26,7 @@ class Queue{
         return this.tail -  this.head;
     }
     isEmpty(){
-        return this.length === 0;
+        return this.length == 0;
     }
 }
 

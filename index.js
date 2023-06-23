@@ -2,9 +2,11 @@ const axios = require('axios');
 const prompt = require('prompt-sync')({sigint: true});
 const fs = require('fs');
 const URL = require('url');
-const {Queue} = require('./utils/dataStructures');
-const {downloadPage} = require('./controller/downloadPage');
-const { getLinksFromHTML } = require('./controller/htmlReaderNew');
+const { Queue } = require('./utils/dataStructures');
+const { downloadPage } = require('./controller/downloadPage');
+const { getLinksFromHTML, htmlParser } = require('./controller/htmlReaderNew');
+const { indexer, filterStopwords } = require('./controller/indexer');
+const saveToDatabase = require('./services/saveToDatabase(postgresql)');
 
 let queue = new Queue();
 let callbackQueue = new Queue();
@@ -15,7 +17,27 @@ let filesList = [];
 let activeURLs = {};
 let fileID = 0;
 let arrayIndexToVisit = 0;
+let startIndexing = prompt('Press 1 to enter into indexing mode\nPress 2 to start Crawler\nPress 3 to exit\n>> ');
 
+if(startIndexing == '1'){
+    let arrayRestore = fs.readFileSync('./restoreLastSession/arrayRestore.json', 'utf8');
+    if(arrayRestore==undefined) process.exit(0);
+    arrayRestore = JSON.parse(arrayRestore);
+    let fileList = arrayRestore.array;
+    let words = [];
+    for(let i = 0; i < fileList.length; i++){
+        words =[...words,...indexer(htmlParser(fs.readFileSync('./files/'+fileList[i].filename,'utf-8')),fileList[i].url)];
+    }
+    let wordsQueue = filterStopwords(words);
+    // console.log(wordsQueue);
+    saveToDatabase(wordsQueue);
+    console.log('Indexer closed successfully');
+    // process.exit(0);
+}
+else if(startIndexing == '2'){
+    console.log('Crawler started...\n')
+
+// let startIndexer = prompt('Also start indexer (Y/N)? : ');
 let maxDepth = 5 ;
 let isTesting = false;  //to activate testing mode
 let sessionID;  //session ID for testing mode only
@@ -120,7 +142,7 @@ let crawlerID = setInterval(function(){
     console.log(activeURLs);
     if(activeURLsCounter<15){
         if(callbackQueue.peak()||queue.peak()||waitingQueue.peak()){
-            root = callbackQueue.peak() ? callbackQueue.dequeue() : queue.dequeue();
+            root = callbackQueue.peak() ? callbackQueue.dequeue() : queue.peak() ? queue.dequeue() : waitingQueue.dequeue();
             const q = URL.parse(root.address);
             if(!(q.host in activeURLs)){
                 activeURLs[q.host] = 1;
@@ -146,7 +168,6 @@ let crawlerID = setInterval(function(){
             }
             else{
                 waitingQueue.enqueue(root);
-                activeURLs++;
             }
             fs.writeFile('./restoreLastSession/queueRestore.json', JSON.stringify(queue),(error)=>{ if(!error) console.log('Queue data saved...');});
             // isTesting ? console.log(root.address, root.depth, isTesting, sessionID) : console.log(root.address, root.depth);
@@ -156,11 +177,21 @@ let crawlerID = setInterval(function(){
             if(isReaderStoped) {
                 fs.writeFile('./restoreLastSession/queueRestore.json','',(error)=>{ if(!error) console.log('Queue data saved...');});
                 if(isTesting){
-
+                    axios.get(`http://127.0.0.1:8000/stop_session?sessionid=${sesssionid}`).then((response)=>{
+                        if(response?.data){
+                            console.log(response.data);
+                            console.log('Crawler Stopped successfully');
+                            clearImmediate(waitingQueueIntervalID)
+                            clearInterval(counterIntervalID);
+                            clearInterval(crawlerID);
+                        }
+                    });
+                }else{
+                    console.log('Crawler Stopped successfully');
+                    clearImmediate(waitingQueueIntervalID)
+                    clearInterval(counterIntervalID);
+                    clearInterval(crawlerID);
                 }
-                console.log('Crawler Stopped successfully');
-                clearInterval(counterIntervalID);
-                clearInterval(crawlerID);
             }
         }
     }
@@ -194,4 +225,14 @@ let fileReaderID = setInterval(function () {
     }
 },5000);
 
+}
+else{
+    console.log('Closed Successfully');
+    process.exit(0);
+}
 
+// if(startIndexer[0].toLocaleLowerCase=='y'){
+
+// }else{
+//     console.log('Started without indexer');
+// }
