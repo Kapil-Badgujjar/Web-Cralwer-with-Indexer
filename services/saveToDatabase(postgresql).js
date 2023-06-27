@@ -11,19 +11,13 @@ const configuration = {
 
 const pool = new Pool(configuration);
 
-// function saveToDatabase(list) {
-//     for (const item of list) {
-//         insertIntoTable(item.word,item.url,item.weight);
-//     }
-//     pool.end();
-// }
-
-function insertIntoTable(word,url,weight) {
+function insertIntoTable(word,url,weight,count) {
+    console.log(weight, word, url, count);
     pool.connect(async(err, client, done) => {
         if (!err) {
             try {
-                const text = 'INSERT INTO "indexTable"(word,url,weight) VALUES($1,$2,$3)';
-                const values = [word, url,weight];
+                const text = 'INSERT INTO "indexTable"(word,url,weight,occurrence) VALUES($1,$2,$3,$4)';
+                const values = [word, url,weight,count];
                 const result = await client.query(text, values);
             } catch (error) {
                 console.error('Error executing INSERT query:', error);
@@ -38,15 +32,29 @@ function saveToDatabase(list) {
     let intervalID = setInterval(()=>{
         if(list.peak()){
             let item = list.dequeue();
-            insertIntoTable(item.word,item.url,item.weight);
-            // console.log(item);
+            insertIntoTable(item.word,item.url,item.weight,item.count);
         }
         else{
             console.log('Data saved to database');
             pool.end();
             clearInterval(intervalID);
         }
-    },20);
+    },10);
 }
 
-module.exports = saveToDatabase;
+async function getURLs(word) {
+    const client = await pool.connect();
+    try {
+      const text = `SELECT url FROM "indexTable" WHERE word = $1 ORDER BY weight DESC`;
+      const values = [word];
+      const result = await client.query(text, values);
+      // console.log(result.rows);
+      return result.rows;
+    } catch (error) {
+      console.error('Error executing SELECT query:', error);
+    } finally {
+      client.release();
+    }
+}
+
+module.exports = {saveToDatabase, getURLs};

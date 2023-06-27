@@ -6,9 +6,10 @@ const { Queue } = require('./utils/dataStructures');
 const { downloadPage } = require('./controller/downloadPage');
 const { getLinksFromHTML, htmlParser } = require('./controller/htmlReaderNew');
 const { indexer, filterStopwords } = require('./controller/indexer');
-const saveToDatabase = require('./services/saveToDatabase(postgresql)');
+const {saveToDatabase, getURLs} = require('./services/saveToDatabase(postgresql)');
 
 let queue = new Queue();
+let history = [];
 let callbackQueue = new Queue();
 let waitingQueue = new Queue();
 let root = {};
@@ -17,7 +18,7 @@ let filesList = [];
 let activeURLs = {};
 let fileID = 0;
 let arrayIndexToVisit = 0;
-let startIndexing = prompt('Press 1 to enter into indexing mode\nPress 2 to start Crawler\nPress 3 to exit\n>> ');
+let startIndexing = prompt('Press 1 to enter into indexing mode\nPress 2 to get URLs for a word\nPress 3 to start Crawler\nPress 4 to exit\n>> ');
 
 if(startIndexing == '1'){
     let arrayRestore = fs.readFileSync('./restoreLastSession/arrayRestore.json', 'utf8');
@@ -35,9 +36,24 @@ if(startIndexing == '1'){
     // process.exit(0);
 }
 else if(startIndexing == '2'){
-    console.log('Crawler started...\n')
+    const word = prompt('Enter a word to search urls: ');
+    console.log(`\nSearching urls for : ${word}...\n`);
+    let i=1;
+    (async () => {
+        try {
+          const listOfUrls = await getURLs(word.toLowerCase());
+          listOfUrls?.forEach((item) => {
+            console.log(i++,'-', item.url);
+          });
+        } catch (error) {
+          console.error('Error:', error);
+        }
+      })();
+      
+}
+else if(startIndexing == '3'){
+console.log('Crawler started...\n');
 
-// let startIndexer = prompt('Also start indexer (Y/N)? : ');
 let maxDepth = 5 ;
 let isTesting = false;  //to activate testing mode
 let sessionID;  //session ID for testing mode only
@@ -47,6 +63,9 @@ let arrayRestore = fs.readFileSync('./restoreLastSession/arrayRestore.json', 'ut
 let fileIDRestore = fs.readFileSync('./restoreLastSession/fileIDRestore.json', 'utf8');
 let maxDepthRestore = fs.readFileSync('./restoreLastSession/maxDepthRestore.json', 'utf8');
 let queueRestore = fs.readFileSync('./restoreLastSession/queueRestore.json', 'utf8');
+let waitingQueueRestore = fs.readFileSync('./restoreLastSession/waitingQueueRestore.json', 'utf8');
+let callbackQueueRestore = fs.readFileSync('./restoreLastSession/callbackQueueRestore.json', 'utf8');
+let historyRestore = fs.readFileSync('./restoreLastSession/historyRestore.json', 'utf8');
 let sessionIDRestore = fs.readFileSync('./restoreLastSession/sessionIDRestore.json', 'utf8');
 
 if(queueRestore.length>0){
@@ -55,6 +74,9 @@ if(queueRestore.length>0){
     fileIDRestore = JSON.parse(fileIDRestore);
     maxDepthRestore = JSON.parse(maxDepthRestore);
     queueRestore = JSON.parse(queueRestore);
+    waitingQueueRestore = JSON.parse(waitingQueueRestore);
+    callbackQueueRestore = JSON.parse(callbackQueueRestore);
+    historyRestore = JSON.parse(historyRestore);
     sessionIDRestore = JSON.parse(sessionIDRestore);
 
     arrayIndexToVisit = arrayIndexToVisitRestore.arrayIndexToVisit;
@@ -64,6 +86,13 @@ if(queueRestore.length>0){
     queue.elements = queueRestore.elements;
     queue.head = queueRestore.head;
     queue.tail = queueRestore.tail;
+    waitingQueue.elements = waitingQueueRestore.elements;
+    waitingQueue.head = waitingQueueRestore.head;
+    waitingQueue.tail = waitingQueueRestore.tail;
+    callbackQueue.elements = callbackQueueRestore.elements;
+    callbackQueue.head = callbackQueueRestore.head;
+    callbackQueue.tail = callbackQueueRestore.tail;
+    history = historyRestore.array;
     sessionID = sessionIDRestore.data;
 
     let choice = 'Y';
@@ -111,6 +140,8 @@ if(queueRestore.length>0){
     });
 }
 
+//Add root url to history
+history.push(root.address);
 
 if(root.address == 'http://127.0.0.1:8000/start_session'){
     isTesting = true;
@@ -136,7 +167,9 @@ let activeURLsCounter = 0;
 let counterIntervalID = setInterval(()=>{
     if(activeURLsCounter>0) activeURLsCounter--;
 },4000);
-let waitingQueueIntervalID = setInterval(()=>{if(waitingQueue.peak()) callbackQueue.enqueue(waitingQueue.dequeue())},12000);
+let waitingQueueIntervalID = setInterval(()=>{if(waitingQueue.peak()) callbackQueue.enqueue(waitingQueue.dequeue()); fs.writeFile('./restoreLastSession/callbackQueueRestore.json',JSON.stringify(callbackQueue),(error)=>{if(error){
+    console.log('Callback queue note saved!');
+}})},12000);
 let crawlerID = setInterval(function(){
     console.log(activeURLsCounter, '<<<< counter');
     console.log(activeURLs);
@@ -149,8 +182,8 @@ let crawlerID = setInterval(function(){
                 activeURLsCounter++;
                 setTimeout(()=>{
                     activeURLs[q.host]--;
-                    if(activeURLs[q.host] == 0){
-                        delete activeURLs[root.address];
+                    if(activeURLs[q.host]<1){
+                        delete activeURLs[q.host];
                     }
                 },60000);
                 downloadPage(root.address, root.depth, fileID++, isTesting, sessionID, filesList);
@@ -160,7 +193,7 @@ let crawlerID = setInterval(function(){
                 activeURLsCounter++;
                 setTimeout(()=>{
                     activeURLs[q.host]--;
-                    if(activeURLs[q.host] == 0){
+                    if(activeURLs[q.host]<1){
                         delete activeURLs[q.host];
                     }
                 },60000);
@@ -168,8 +201,9 @@ let crawlerID = setInterval(function(){
             }
             else{
                 waitingQueue.enqueue(root);
+                fs.writeFile('./restoreLastSession/waitingQueueRestore.json', JSON.stringify(waitingQueue),(queue)=>{ if(error) console.log('waiting queue not saved!')});
             }
-            fs.writeFile('./restoreLastSession/queueRestore.json', JSON.stringify(queue),(error)=>{ if(!error) console.log('Queue data saved...');});
+            fs.writeFile('./restoreLastSession/queueRestore.json', JSON.stringify(queue),(error)=>{ if(error) console.log('Queue data not saved!');});
             // isTesting ? console.log(root.address, root.depth, isTesting, sessionID) : console.log(root.address, root.depth);
             // downloadPage(root.address, root.depth, fileID++, isTesting, sessionID, filesList);
         }
@@ -198,41 +232,26 @@ let crawlerID = setInterval(function(){
 },1000);
 
 let fileReaderID = setInterval(function () {
-    // console.log(arrayIndexToVisit,filesList.length);
     if(arrayIndexToVisit < filesList.length)
     {   
-        // console.log(filesList);
         if(filesList[arrayIndexToVisit]!=undefined){
 
             if(filesList[arrayIndexToVisit].depth == maxDepth){ 
                 isReaderStoped = true;
-                // fs.writeFile('./restoreLastSession/arrayIndexToVisitRestore.json', JSON.stringify({arrayIndexToVisit}),(error)=>{
-                //     if(error) { console.log('Index is not stored properly'); }
-                // });
                 console.log('\n*******************\n\nFile Reader stoped...\n\n*******************\n'); 
                 clearInterval(fileReaderID);
             }
             let data = fs.readFileSync(`./files/${filesList[arrayIndexToVisit].filename}`,'utf-8');
-            getLinksFromHTML(filesList[arrayIndexToVisit].url, data, filesList[arrayIndexToVisit].depth, queue);
+            getLinksFromHTML(filesList[arrayIndexToVisit].url, data, filesList[arrayIndexToVisit].depth, queue, history);
             arrayIndexToVisit++;
             fs.writeFile('./restoreLastSession/arrayIndexToVisitRestore.json', JSON.stringify({arrayIndexToVisit}),(error)=>{
                 if(error) { console.log('Index is not stored properly'); }
             });
-            // reader.on('data', function(chunk){
-            //     let data = chunk.toString();
-            // });
         }
     }
 },5000);
 
-}
-else{
+}else{
     console.log('Closed Successfully');
     process.exit(0);
 }
-
-// if(startIndexer[0].toLocaleLowerCase=='y'){
-
-// }else{
-//     console.log('Started without indexer');
-// }

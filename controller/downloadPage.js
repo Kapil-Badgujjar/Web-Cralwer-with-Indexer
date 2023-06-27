@@ -7,7 +7,7 @@ function downloadPage(url, depth, fileID, flag, sessionID, filesList){
         .then((response,reject)=>{
             if(response.status === 200){
                 console.log('Connected to server...');
-                fs.writeFile(__dirname+'../../restoreLastSession/fileIDRestore.json', JSON.stringify({fileID:fileID}),(error)=>{ if(!error) console.log('fileID saved...');});
+                fs.writeFile(__dirname+'../../restoreLastSession/fileIDRestore.json', JSON.stringify({fileID:fileID}),(error)=>{ if(error) console.log('fileID not saved!');});
                 const filename = `File${fileID}_htmlCode.html`;
                 // const writeFileStream = fs.createWriteStream(`./files/${filename}`);
                 // writeFileStream.write(response.data);
@@ -31,7 +31,7 @@ function downloadPage(url, depth, fileID, flag, sessionID, filesList){
             return false;
         }).catch((reject)=>{
             console.log(reject.message);
-            fs.writeFile(__dirname+'../../restoreLastSession/fileIDRestore.json', JSON.stringify({fileID:fileID}),(error)=>{ if(!error) console.log('fileID saved...');});
+            fs.writeFile(__dirname+'../../restoreLastSession/fileIDRestore.json', JSON.stringify({fileID:fileID}),(error)=>{ if(error) console.log('fileID not saved!');});
             const filename = `File${fileID}_failedConnectionMessage.html`;
             fs.writeFile(__dirname+`../../failedConnections/${filename}`, 'URL: '+ url + '\nMessage:\n'+ reject.message,(error)=>{ if(error) console.log('Error message not saved');});
 

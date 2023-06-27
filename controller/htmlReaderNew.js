@@ -2,7 +2,7 @@ const fs = require('fs');
 const URL = require('url');
 const {Queue,Stack} = require('../utils/dataStructures');
 
-function getLinksFromHTML(url, file, depth, queue){
+function getLinksFromHTML(url, file, depth, queue, history){
     let temp = "";
     pattern = 'href="';
     let j=0;
@@ -42,12 +42,27 @@ function getLinksFromHTML(url, file, depth, queue){
                             // }
                         }
                     }
-                    if(temp == 'https://www.google.co.in../' ){
-                        fs.writeFileSync('./ErrorFile.txt', file);
-                    }
+                    // if(temp == 'https://www.google.co.in../' ){
+                    //     fs.writeFileSync('./ErrorFile.txt', file);
+                    // }
+                    //Remove forword slash (/) from the end of a url
+                    if(temp.slice(-1) == '/') temp = temp.slice(0, -1);
                     if(temp[0]!='.'&&temp.slice(8,12) != 'play'&&temp.slice(8,12) != 'news'&&temp.slice(8,12) != 'mail'&& temp.slice(0,7) != '//fonts'){
-                        fs.writeFile(__dirname+`../../URLs/depth-${depth}.text`,(JSON.stringify(temp)+'\n'),{ flag: 'a+'},function(err){});
-                        queue.enqueue({address: temp, depth: depth});
+                        //if url is not present in our history
+                        if(history.indexOf(temp)==-1)
+                        {
+                            //Write to the file
+                            fs.writeFile(__dirname+`../../URLs/depth-${depth}.text`,(JSON.stringify(temp)+'\n'),{ flag: 'a+'},function(err){});
+                            
+                            //Insert into queue
+                            queue.enqueue({address: temp, depth: depth});
+
+                            //Add to history
+                            history.push(temp);
+                            fs.writeFile('../../restoreLastSession/historyRestore.json', JSON.stringify({array: history}),(error)=>{
+                                if(error) console.log('History not saved');
+                            });
+                        }
                     }
                 }
                 temp="";
@@ -69,6 +84,7 @@ function htmlParser(file){
     let metaTag = '';
     let metaKeywords = '';
     let flag = false;
+    try{
     for(let i=0; i<file.length; i++){
         flag = false;
         tagName = '';
@@ -140,6 +156,9 @@ function htmlParser(file){
                 stack.push({tagName : element.tagName, content: element.content});
             }
         }
+    }
+    } catch (error){
+        console.log(error.message);
     }
     return queue;
 }

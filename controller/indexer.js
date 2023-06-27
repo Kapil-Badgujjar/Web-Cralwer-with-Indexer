@@ -3,10 +3,10 @@ const fs = require('fs');
 const { Queue } = require('../utils/dataStructures');
 function convertData(term,weight,url){
     term = term.toLowerCase();
-    if(term.slice(-1)==','||term.slice(-1)=='.'||term.slice(-1)=='?'||term.slice(-1)=='!'||term.slice (-1)=='"'){
+    if(term.slice(-1)==','||term.slice(-1)=='.'||term.slice(-1)=='?'||term.slice(-1)=='!'||term.slice (-1)=='"'||term.slice (-1)=="'"){
         term = term.slice(0, -1);
     }
-    if(term.slice(0)=='.'||term.slice(0)=='"'){
+    if(term.slice(0)=='.'||term.slice(0)=='"'||term.slice(0)=="'"){
         term = term.slice(1,term.length-1);
     }
     return {word: term, weight: weight, url: url}
@@ -85,6 +85,21 @@ function indexer(data, url){
         break;
         }
     }
+
+    let groupedObjects = words.reduce((groups, obj) => {
+        // if (!groups[obj.word] || obj.weight > groups[obj.word].weight) {
+        if (!groups[obj.word]) {
+          groups[obj.word] = {...obj,count:1};
+        }
+        else{
+            let newWeight = groups[obj.word].weight + obj.weight;
+            groups[obj.word].weight = newWeight;
+            groups[obj.word].count += 1;
+        }
+        return groups;
+      }, {});
+      words = Object.values(groupedObjects);
+
     return words;
 }
 function filterStopwords(words){
@@ -101,14 +116,6 @@ function filterStopwords(words){
         }
         if(flag&&!isStringMadeOfSpecialCharacters(words[i].word)&&!doesStringContainNumber(words[i].word))  filteredWords.push(words[i]);
     }
-
-    let groupedObjects = filteredWords.reduce((groups, obj) => {
-        if (!groups[obj.word] || obj.weight > groups[obj.word].weight) {
-          groups[obj.word] = obj;
-        }
-        return groups;
-      }, {});
-    filteredWords = Object.values(groupedObjects);
     let filterWordsQueue = new Queue();
     for(let i=0; i<filteredWords.length; i++) {
         filterWordsQueue.enqueue(filteredWords[i]);
